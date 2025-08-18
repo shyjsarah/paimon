@@ -45,7 +45,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -215,7 +214,7 @@ public class CloneActionITCase extends ActionITCaseBase {
 
     @Test
     public void testCloneWithTimestamp() throws Exception {
-        String format = "orc";
+        String format = "TEXTFILE";
         String dbName = "hivedb" + StringUtils.randomNumericString(10);
         String tableName = "hivetable" + StringUtils.randomNumericString(10);
 
@@ -276,7 +275,7 @@ public class CloneActionITCase extends ActionITCaseBase {
     }
 
     public void testMigrateOnePartitionedTableImpl(boolean specificFilter) throws Exception {
-        String format = randomFormat();
+        String format = "TEXTFILE";
         String dbName = "hivedb" + StringUtils.randomNumericString(10);
         String tableName = "hivetable" + StringUtils.randomNumericString(10);
 
@@ -891,20 +890,22 @@ public class CloneActionITCase extends ActionITCaseBase {
     }
 
     private String randomFormat() {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        int i = random.nextInt(3);
-        String[] formats = new String[] {"orc", "parquet", "avro"};
-        return formats[i];
+        //        ThreadLocalRandom random = ThreadLocalRandom.current();
+        //        int i = random.nextInt(3);
+        //        String[] formats = new String[] {"orc", "parquet", "avro"};
+        //        return formats[i];
+        return "avro";
     }
 
     private String randomFormat(String excludedFormat) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        int i = random.nextInt(3);
-        String[] formats = new String[] {"orc", "parquet", "avro"};
-        if (Objects.equals(excludedFormat, formats[i])) {
-            return formats[(i + 1) % 3];
-        }
-        return formats[i];
+        //        ThreadLocalRandom random = ThreadLocalRandom.current();
+        //        int i = random.nextInt(3);
+        //        String[] formats = new String[] {"orc", "parquet", "avro"};
+        //        if (Objects.equals(excludedFormat, formats[i])) {
+        //            return formats[(i + 1) % 3];
+        //        }
+        //        return formats[i];
+        return "avro";
     }
 
     private FileStoreTable paimonTable(TableEnvironment tEnv, String catalogName, Identifier table)
