@@ -28,6 +28,8 @@ import org.apache.paimon.flink.clone.files.CloneFilesFunction;
 import org.apache.paimon.flink.clone.files.DataFileInfo;
 import org.apache.paimon.flink.clone.files.ListCloneFilesFunction;
 import org.apache.paimon.flink.clone.files.ShuffleDataFileByTableComputer;
+import org.apache.paimon.flink.clone.schema.CloneHiveSchemaFunction;
+import org.apache.paimon.flink.clone.schema.CloneSchemaInfo;
 import org.apache.paimon.flink.sink.FlinkStreamPartitioner;
 import org.apache.paimon.hive.HiveCatalog;
 import org.apache.paimon.utils.StringUtils;
@@ -147,7 +149,8 @@ public class CloneHiveTableUtils {
             int parallelism,
             @Nullable String whereSql,
             @Nullable List<String> includedTables,
-            @Nullable List<String> excludedTables)
+            @Nullable List<String> excludedTables,
+            boolean metaOnly)
             throws Exception {
         // list source tables
         DataStream<Tuple2<Identifier, Identifier>> source =
@@ -165,33 +168,46 @@ public class CloneHiveTableUtils {
                 FlinkStreamPartitioner.partition(
                         source, new ShuffleIdentifierByTableComputer(), parallelism);
 
-        // create target table, list files and group by <table, partition>
-        DataStream<CloneFileInfo> files =
-                partitionedSource
-                        .process(
-                                new ListCloneFilesFunction(
-                                        sourceCatalogConfig, targetCatalogConfig, whereSql))
-                        .name("List Files")
-                        .setParallelism(parallelism);
+        if (metaOnly) {
+            DataStream<CloneSchemaInfo> schemaInfos =
+                    partitionedSource
+                            .process(
+                                    new CloneHiveSchemaFunction(
+                                            sourceCatalogConfig, targetCatalogConfig))
+                            .name("Clone Schema")
+                            .setParallelism(parallelism);
+            schemaInfos.sinkTo(new DiscardingSink<>()).name("end").setParallelism(1);
+        } else {
+            // create target table, list files and group by <table, partition>
+            DataStream<CloneFileInfo> files =
+                    partitionedSource
+                            .process(
+                                    new ListCloneFilesFunction(
+                                            sourceCatalogConfig, targetCatalogConfig, whereSql))
+                            .name("List Files")
+                            .setParallelism(parallelism);
 
-        // copy files and commit
-        DataStream<DataFileInfo> dataFile =
-                files.rebalance()
-                        .process(new CloneFilesFunction(sourceCatalogConfig, targetCatalogConfig))
-                        .name("Copy Files")
-                        .setParallelism(parallelism);
+            // copy files and commit
+            DataStream<DataFileInfo> dataFile =
+                    files.rebalance()
+                            .process(
+                                    new CloneFilesFunction(
+                                            sourceCatalogConfig, targetCatalogConfig))
+                            .name("Copy Files")
+                            .setParallelism(parallelism);
 
-        DataStream<DataFileInfo> partitionedDataFile =
-                FlinkStreamPartitioner.partition(
-                        dataFile, new ShuffleDataFileByTableComputer(), parallelism);
+            DataStream<DataFileInfo> partitionedDataFile =
+                    FlinkStreamPartitioner.partition(
+                            dataFile, new ShuffleDataFileByTableComputer(), parallelism);
 
-        DataStream<Long> committed =
-                partitionedDataFile
-                        .transform(
-                                "Commit table",
-                                BasicTypeInfo.LONG_TYPE_INFO,
-                                new CloneFilesCommitOperator(targetCatalogConfig))
-                        .setParallelism(parallelism);
-        committed.sinkTo(new DiscardingSink<>()).name("end").setParallelism(1);
+            DataStream<Long> committed =
+                    partitionedDataFile
+                            .transform(
+                                    "Commit table",
+                                    BasicTypeInfo.LONG_TYPE_INFO,
+                                    new CloneFilesCommitOperator(targetCatalogConfig))
+                            .setParallelism(parallelism);
+            committed.sinkTo(new DiscardingSink<>()).name("end").setParallelism(1);
+        }
     }
 }

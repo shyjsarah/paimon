@@ -39,6 +39,7 @@ public class CloneActionFactory implements ActionFactory {
     private static final String INCLUDED_TABLES = "included_tables";
     private static final String EXCLUDED_TABLES = "excluded_tables";
     private static final String CLONE_FROM = "clone_from";
+    private static final String META_ONLY = "meta_only";
 
     @Override
     public String identifier() {
@@ -75,6 +76,12 @@ public class CloneActionFactory implements ActionFactory {
             cloneFrom = "hive";
         }
 
+        String metaOnlyStr = params.get(META_ONLY);
+        boolean metaOnly =
+                StringUtils.isNullOrWhitespaceOnly(metaOnlyStr)
+                        ? false
+                        : Boolean.parseBoolean(metaOnlyStr);
+
         CloneAction cloneAction =
                 new CloneAction(
                         params.get(DATABASE),
@@ -87,7 +94,8 @@ public class CloneActionFactory implements ActionFactory {
                         params.get(WHERE),
                         includedTables,
                         excludedTables,
-                        cloneFrom);
+                        cloneFrom,
+                        metaOnly);
 
         return Optional.of(cloneAction);
     }

@@ -45,6 +45,7 @@ public class CloneAction extends ActionBase {
     @Nullable private final List<String> includedTables;
     @Nullable private final List<String> excludedTables;
     private final String cloneFrom;
+    private final boolean metaOnly;
 
     public CloneAction(
             String sourceDatabase,
@@ -57,7 +58,8 @@ public class CloneAction extends ActionBase {
             @Nullable String whereSql,
             @Nullable List<String> includedTables,
             @Nullable List<String> excludedTables,
-            String cloneFrom) {
+            String cloneFrom,
+            boolean metaOnly) {
         super(sourceCatalogConfig);
 
         if (cloneFrom.equalsIgnoreCase("hive")) {
@@ -85,6 +87,7 @@ public class CloneAction extends ActionBase {
         this.includedTables = includedTables;
         this.excludedTables = excludedTables;
         this.cloneFrom = cloneFrom;
+        this.metaOnly = metaOnly;
     }
 
     @Override
@@ -103,7 +106,8 @@ public class CloneAction extends ActionBase {
                         parallelism,
                         whereSql,
                         includedTables,
-                        excludedTables);
+                        excludedTables,
+                        metaOnly);
                 break;
             case "paimon":
                 ClonePaimonTableUtils.build(
