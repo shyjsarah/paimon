@@ -29,6 +29,8 @@ import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,6 +44,8 @@ public class CommitMessageTableOperator extends AbstractStreamOperator<Long>
         implements OneInputStreamOperator<CommitMessageInfo, Long>, BoundedOneInput {
 
     private static final long serialVersionUID = 1L;
+
+    private static final Logger LOG = LoggerFactory.getLogger(CommitMessageTableOperator.class);
 
     private final Map<String, String> catalogConfig;
 
@@ -74,6 +78,7 @@ public class CommitMessageTableOperator extends AbstractStreamOperator<Long>
                 try (BatchTableCommit commit =
                         table.newBatchWriteBuilder().withOverwrite().newCommit()) {
                     commit.commit(commitMessages);
+                    LOG.info("[clone] Commit table {} success.", entry.getKey());
                 }
             }
         }

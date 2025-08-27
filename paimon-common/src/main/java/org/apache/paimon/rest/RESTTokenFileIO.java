@@ -52,6 +52,8 @@ public class RESTTokenFileIO implements FileIO {
 
     private static final long serialVersionUID = 2L;
 
+    private static final Logger LOG = LoggerFactory.getLogger(RESTTokenFileIO.class);
+
     public static final ConfigOption<Boolean> DATA_TOKEN_ENABLED =
             ConfigOptions.key("data-token.enabled")
                     .booleanType()
@@ -63,15 +65,18 @@ public class RESTTokenFileIO implements FileIO {
                     .expireAfterAccess(30, TimeUnit.MINUTES)
                     .maximumSize(1000)
                     .removalListener(
-                            (ignored, value, cause) -> IOUtils.closeQuietly((FileIO) value))
+                            (ignored, value, cause) -> {
+                                LOG.info(
+                                        "fileIO expired for identifier [{}]",
+                                        ((RESTTokenFileIO) value).identifier);
+                                IOUtils.closeQuietly((FileIO) value);
+                            })
                     .scheduler(
                             Scheduler.forScheduledExecutorService(
                                     Executors.newSingleThreadScheduledExecutor(
                                             ThreadUtils.newDaemonThreadFactory(
                                                     "rest-token-file-io-scheduler"))))
                     .build();
-
-    private static final Logger LOG = LoggerFactory.getLogger(RESTTokenFileIO.class);
 
     private final CatalogContext catalogContext;
     private final Identifier identifier;
@@ -173,6 +178,7 @@ public class RESTTokenFileIO implements FileIO {
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+            LOG.info("create fileIO for identifier [{}]", identifier);
             FILE_IO_CACHE.put(token, fileIO);
             return fileIO;
         }
