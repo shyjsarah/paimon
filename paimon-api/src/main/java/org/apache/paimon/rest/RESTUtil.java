@@ -64,6 +64,23 @@ public class RESTUtil {
         return result;
     }
 
+    public static Map<String, String> extractPrefixMapWithReservedPrefix(
+            Options options, String prefix) {
+        return extractPrefixMapWithReservedPrefix(options.toMap(), prefix);
+    }
+
+    public static Map<String, String> extractPrefixMapWithReservedPrefix(
+            Map<String, String> properties, String prefix) {
+        Preconditions.checkNotNull(properties, "Invalid properties map: null");
+        Map<String, String> result = Maps.newHashMap();
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().startsWith(prefix)) {
+                result.put(entry.getKey(), properties.get(entry.getKey()));
+            }
+        }
+        return result;
+    }
+
     /**
      * Merges two string maps with override properties taking precedence over base properties.
      *

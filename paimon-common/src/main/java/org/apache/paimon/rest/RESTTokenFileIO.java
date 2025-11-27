@@ -37,7 +37,6 @@ import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Cach
 import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Caffeine;
 import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Scheduler;
 import org.apache.paimon.shade.guava30.com.google.common.collect.ImmutableMap;
-import org.apache.paimon.shade.guava30.com.google.common.collect.Maps;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +76,8 @@ public class RESTTokenFileIO implements FileIO {
                     .build();
 
     private static final Logger LOG = LoggerFactory.getLogger(RESTTokenFileIO.class);
+
+    private static final String CONFIG_PREFIX = "fs.";
 
     private final CatalogContext catalogContext;
     private final Identifier identifier;
@@ -233,7 +234,10 @@ public class RESTTokenFileIO implements FileIO {
     }
 
     private Map<String, String> mergeTokenWithCatalogOptions(Map<String, String> token) {
-        Map<String, String> newToken = Maps.newLinkedHashMap(token);
+        Map<String, String> baseOptions =
+                RESTUtil.extractPrefixMapWithReservedPrefix(
+                        catalogContext.options(), CONFIG_PREFIX);
+        Map<String, String> newToken = RESTUtil.merge(baseOptions, token);
         // DLF OSS endpoint should override the standard OSS endpoint.
         String dlfOssEndpoint = catalogContext.options().get(DLF_OSS_ENDPOINT.key());
         if (dlfOssEndpoint != null && !dlfOssEndpoint.isEmpty()) {
