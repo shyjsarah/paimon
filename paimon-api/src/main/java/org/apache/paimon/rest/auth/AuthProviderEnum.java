@@ -21,7 +21,8 @@ package org.apache.paimon.rest.auth;
 /** AuthProviderEnum. */
 public enum AuthProviderEnum {
     BEAR("bear"),
-    DLF("dlf");
+    DLF("dlf"),
+    DLF_OPEN_API("dlf-open-api");
 
     private final String identifier;
 

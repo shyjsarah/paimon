@@ -27,7 +27,7 @@ import static org.apache.paimon.rest.RESTUtil.encodeString;
 /** Resource paths for REST catalog. */
 public class ResourcePaths {
 
-    protected static final String V1 = "/v1";
+    protected static final String V1 = "/dlf/v1";
     protected static final String DATABASES = "databases";
     protected static final String TABLES = "tables";
     protected static final String PARTITIONS = "partitions";

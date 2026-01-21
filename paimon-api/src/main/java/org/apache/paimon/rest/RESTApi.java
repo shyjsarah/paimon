@@ -91,10 +91,12 @@ import org.apache.paimon.shade.guava30.com.google.common.collect.ImmutableMap;
 import org.apache.paimon.shade.guava30.com.google.common.collect.Maps;
 import org.apache.paimon.shade.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.paimon.shade.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
+import org.checkerframework.checker.units.qual.C;
 
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -176,7 +178,7 @@ public class RESTApi {
      * <p>If the {@code options} are already obtained through {@link #options()}, you can configure
      * configRequired to be false.
      *
-     * @param options contains authentication and catalog information for REST Server
+     * @param options        contains authentication and catalog information for REST Server
      * @param configRequired is there one REST request to merge configurations during initialization
      */
     public RESTApi(Options options, boolean configRequired) {
@@ -189,13 +191,12 @@ public class RESTApi {
                     StringUtils.isNotEmpty(warehouse)
                             ? ImmutableMap.of(WAREHOUSE.key(), RESTUtil.encodeString(warehouse))
                             : ImmutableMap.of();
+            Map<String, String> mockOptions = new HashMap<>();
+            mockOptions.put(RESTCatalogInternalOptions.PREFIX.key(), "clg-paimon-4bbaba86c22e4620a378ff427766f544");
+            ConfigResponse configResponse = new ConfigResponse(mockOptions, new HashMap<>());
             options =
                     new Options(
-                            client.get(
-                                            ResourcePaths.config(),
-                                            queryParams,
-                                            ConfigResponse.class,
-                                            new RESTAuthFunction(baseHeaders, authProvider))
+                            configResponse
                                     .merge(options.toMap()));
             baseHeaders.putAll(extractPrefixMap(options, HEADER_PREFIX));
         }
@@ -204,7 +205,9 @@ public class RESTApi {
         this.resourcePaths = ResourcePaths.forCatalogProperties(options);
     }
 
-    /** Get the configured options which has been merged from REST Server. */
+    /**
+     * Get the configured options which has been merged from REST Server.
+     */
     public Options options() {
         return options;
     }
@@ -232,10 +235,10 @@ public class RESTApi {
      * the elements in the array.
      *
      * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     *                   the result. If maxResults is not specified or set to 0, will return the default number of
+     *                   max results.
+     * @param pageToken  Optional parameter indicating the next page token allows list to be start
+     *                   from a specific point.
      * @return {@link PagedList}: elements and nextPageToken.
      */
     public PagedList<String> listDatabasesPaged(
@@ -263,8 +266,8 @@ public class RESTApi {
      *
      * @param name name of this database
      * @throws AlreadyExistsException Exception thrown on HTTP 409 means a database already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException     Exception thrown on HTTP 403 means don't have the permission for
+     *                                this database
      */
     public void createDatabase(String name, Map<String, String> properties) {
         CreateDatabaseRequest request = new CreateDatabaseRequest(name, properties);
@@ -277,8 +280,8 @@ public class RESTApi {
      * @param name name of this database
      * @return {@link GetDatabaseResponse}
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public GetDatabaseResponse getDatabase(String name) {
         return client.get(
@@ -290,8 +293,8 @@ public class RESTApi {
      *
      * @param name name of this database
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public void dropDatabase(String name) {
         client.delete(resourcePaths.database(name), restAuthFunction);
@@ -300,12 +303,12 @@ public class RESTApi {
     /**
      * Alter a database.
      *
-     * @param name name of this database
+     * @param name     name of this database
      * @param removals options to be removed
-     * @param updates options to be updated or added
+     * @param updates  options to be updated or added
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public void alterDatabase(String name, List<String> removals, Map<String, String> updates) {
         client.post(
@@ -321,8 +324,8 @@ public class RESTApi {
      * @param databaseName name of this database
      * @return a list of table names
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public List<String> listTables(String databaseName) {
         return listDataFromPageApi(
@@ -340,18 +343,18 @@ public class RESTApi {
      * <p>Gets an array of tables for a database. There is no guarantee of a specific ordering of
      * the elements in the array.
      *
-     * @param databaseName name of database.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param databaseName     name of database.
+     * @param maxResults       Optional parameter indicating the maximum number of results to include in
+     *                         the result. If maxResults is not specified or set to 0, will return the default number of
+     *                         max results.
+     * @param pageToken        Optional parameter indicating the next page token allows list to be start
+     *                         from a specific point.
      * @param tableNamePattern A sql LIKE pattern (%) for table names. All tables will be returned
-     *     if not set or empty. Currently, only prefix matching is supported.
+     *                         if not set or empty. Currently, only prefix matching is supported.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public PagedList<String> listTablesPaged(
             String databaseName,
@@ -382,20 +385,20 @@ public class RESTApi {
      * <p>Gets an array of table details for a database. There is no guarantee of a specific
      * ordering of the elements in the array.
      *
-     * @param databaseName name of database.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param databaseName     name of database.
+     * @param maxResults       Optional parameter indicating the maximum number of results to include in
+     *                         the result. If maxResults is not specified or set to 0, will return the default number of
+     *                         max results.
+     * @param pageToken        Optional parameter indicating the next page token allows list to be start
+     *                         from a specific point.
      * @param tableNamePattern A sql LIKE pattern (%) for table names. All tables will be returned
-     *     if not set or empty. Currently, only prefix matching is supported.
-     * @param tableType Optional parameter to filter tables by table type. All table types will be
-     *     returned if not set or empty.
+     *                         if not set or empty. Currently, only prefix matching is supported.
+     * @param tableType        Optional parameter to filter tables by table type. All table types will be
+     *                         returned if not set or empty.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public PagedList<GetTableResponse> listTableDetailsPaged(
             String databaseName,
@@ -427,17 +430,17 @@ public class RESTApi {
      * elements in the array.
      *
      * @param databaseNamePattern A sql LIKE pattern (%) for database names. All databases will be
-     *     returned if not set or empty. Currently, only prefix matching is supported.
-     * @param tableNamePattern A sql LIKE pattern (%) for table names. All tables will be returned
-     *     if not set or empty. Currently, only prefix matching is supported.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     *                            returned if not set or empty. Currently, only prefix matching is supported.
+     * @param tableNamePattern    A sql LIKE pattern (%) for table names. All tables will be returned
+     *                            if not set or empty. Currently, only prefix matching is supported.
+     * @param maxResults          Optional parameter indicating the maximum number of results to include in
+     *                            the result. If maxResults is not specified or set to 0, will return the default number of
+     *                            max results.
+     * @param pageToken           Optional parameter indicating the next page token allows list to be start
+     *                            from a specific point.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     *                            this database
      */
     public PagedList<Identifier> listTablesPagedGlobally(
             @Nullable String databaseNamePattern,
@@ -467,8 +470,8 @@ public class RESTApi {
      * @param identifier database name and table name.
      * @return {@link GetTableResponse}
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public GetTableResponse getTable(Identifier identifier) {
         return client.get(
@@ -483,9 +486,9 @@ public class RESTApi {
      * @param identifier database name and table name.
      * @return {@link TableSnapshot} snapshot with statistics.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or the latest
-     *     snapshot not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 snapshot not exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public TableSnapshot loadSnapshot(Identifier identifier) {
         GetTableSnapshotResponse response =
@@ -508,12 +511,12 @@ public class RESTApi {
      * </ul>
      *
      * @param identifier database name and table name.
-     * @param version version to snapshot
+     * @param version    version to snapshot
      * @return Optional snapshot.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or the snapshot
-     *     not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 not exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public Snapshot loadSnapshot(Identifier identifier, String version) {
         GetVersionSnapshotResponse response =
@@ -530,16 +533,16 @@ public class RESTApi {
      *
      * @param identifier path of the table to list partitions
      * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     *                   the result. If maxResults is not specified or set to 0, will return the default number of
+     *                   max results.
+     * @param pageToken  Optional parameter indicating the next page token allows list to be start
+     *                   from a specific point.
      * @return a list of the snapshots with provided page size(@param maxResults) in this table and
-     *     next page token.
+     * next page token.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or the latest
-     *     snapshot not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 snapshot not exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public PagedList<Snapshot> listSnapshotsPaged(
             Identifier identifier, @Nullable Integer maxResults, @Nullable String pageToken) {
@@ -561,13 +564,13 @@ public class RESTApi {
      * Commit snapshot for table.
      *
      * @param identifier database name and table name.
-     * @param tableUuid Uuid of the table to avoid wrong commit
-     * @param snapshot snapshot for committing
+     * @param tableUuid  Uuid of the table to avoid wrong commit
+     * @param snapshot   snapshot for committing
      * @param statistics statistics for this snapshot incremental
      * @return true if commit success
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public boolean commitSnapshot(
             Identifier identifier,
@@ -589,11 +592,11 @@ public class RESTApi {
      * Rollback instant for table.
      *
      * @param identifier database name and table name.
-     * @param instant instant to rollback
+     * @param instant    instant to rollback
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or the snapshot
-     *     or the tag not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 or the tag not exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void rollbackTo(Identifier identifier, Instant instant) {
         rollbackTo(identifier, instant, null);
@@ -602,14 +605,14 @@ public class RESTApi {
     /**
      * Rollback instant for table.
      *
-     * @param identifier database name and table name.
-     * @param instant instant to rollback
+     * @param identifier   database name and table name.
+     * @param instant      instant to rollback
      * @param fromSnapshot snapshot from, success only occurs when the latest snapshot is this
-     *     snapshot.
+     *                     snapshot.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or the snapshot
-     *     or the tag not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 or the tag not exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void rollbackTo(Identifier identifier, Instant instant, @Nullable Long fromSnapshot) {
         RollbackTableRequest request = new RollbackTableRequest(instant, fromSnapshot);
@@ -624,11 +627,11 @@ public class RESTApi {
      * Create table.
      *
      * @param identifier database name and table name.
-     * @param schema schema to create table
+     * @param schema     schema to create table
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws AlreadyExistsException Exception thrown on HTTP 409 means a table already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     creating table
+     * @throws AlreadyExistsException  Exception thrown on HTTP 409 means a table already exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 creating table
      */
     public void createTable(Identifier identifier, Schema schema) {
         CreateTableRequest request = new CreateTableRequest(identifier, schema);
@@ -639,11 +642,11 @@ public class RESTApi {
      * Rename table.
      *
      * @param fromTable from table
-     * @param toTable to table
+     * @param toTable   to table
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the fromTable not exists
-     * @throws AlreadyExistsException Exception thrown on HTTP 409 means the toTable already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     renaming table
+     * @throws AlreadyExistsException  Exception thrown on HTTP 409 means the toTable already exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 renaming table
      */
     public void renameTable(Identifier fromTable, Identifier toTable) {
         RenameTableRequest request = new RenameTableRequest(fromTable, toTable);
@@ -654,10 +657,10 @@ public class RESTApi {
      * Alter table.
      *
      * @param identifier database name and table name.
-     * @param changes changes to alter table
+     * @param changes    changes to alter table
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void alterTable(Identifier identifier, List<SchemaChange> changes) {
         AlterTableRequest request = new AlterTableRequest(changes);
@@ -671,11 +674,11 @@ public class RESTApi {
      * Auth table query.
      *
      * @param identifier database name and table name.
-     * @param select select columns, null if select all
+     * @param select     select columns, null if select all
      * @return additional filter for row level access control
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public List<String> authTableQuery(Identifier identifier, @Nullable List<String> select) {
         AuthTableQueryRequest request = new AuthTableQueryRequest(select);
@@ -694,8 +697,8 @@ public class RESTApi {
      *
      * @param identifier database name and table name.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void dropTable(Identifier identifier) {
         client.delete(
@@ -716,8 +719,8 @@ public class RESTApi {
      * @param identifier database name and table name.
      * @param partitions partitions to be marked done
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void markDonePartitions(Identifier identifier, List<Map<String, String>> partitions) {
         MarkDonePartitionsRequest request = new MarkDonePartitionsRequest(partitions);
@@ -734,8 +737,8 @@ public class RESTApi {
      * @param identifier database name and table name.
      * @return a list for partitions
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public List<Partition> listPartitions(Identifier identifier) {
         return listDataFromPageApi(
@@ -754,18 +757,18 @@ public class RESTApi {
      * <p>Gets an array of partitions for a table. There is no guarantee of a specific ordering of
      * the elements in the array.
      *
-     * @param identifier database name and table name.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param identifier           database name and table name.
+     * @param maxResults           Optional parameter indicating the maximum number of results to include in
+     *                             the result. If maxResults is not specified or set to 0, will return the default number of
+     *                             max results.
+     * @param pageToken            Optional parameter indicating the next page token allows list to be start
+     *                             from a specific point.
      * @param partitionNamePattern A sql LIKE pattern (%) for partition names. All partitions will
-     *     be returned if not set or empty. Currently, only prefix matching is supported.
+     *                             be returned if not set or empty. Currently, only prefix matching is supported.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public PagedList<Partition> listPartitionsPaged(
             Identifier identifier,
@@ -793,13 +796,13 @@ public class RESTApi {
      * Create branch for table.
      *
      * @param identifier database name and table name.
-     * @param branch branch name
-     * @param fromTag optional from tag
+     * @param branch     branch name
+     * @param fromTag    optional from tag
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or fromTag not
-     *     exists
-     * @throws AlreadyExistsException Exception thrown on HTTP 409 means the branch already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 exists
+     * @throws AlreadyExistsException  Exception thrown on HTTP 409 means the branch already exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void createBranch(Identifier identifier, String branch, @Nullable String fromTag) {
         CreateBranchRequest request = new CreateBranchRequest(branch, fromTag);
@@ -813,10 +816,10 @@ public class RESTApi {
      * Drop branch for table.
      *
      * @param identifier database name and table name.
-     * @param branch branch name
+     * @param branch     branch name
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the branch not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void dropBranch(Identifier identifier, String branch) {
         client.delete(
@@ -829,11 +832,11 @@ public class RESTApi {
      * Forward branch for table.
      *
      * @param identifier database name and table name.
-     * @param branch branch name
+     * @param branch     branch name
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the branch or table not
-     *     exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void fastForward(Identifier identifier, String branch) {
         ForwardBranchRequest request = new ForwardBranchRequest();
@@ -850,8 +853,8 @@ public class RESTApi {
      * @param identifier database name and table name.
      * @return a list of branches
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public List<String> listBranches(Identifier identifier) {
         ListBranchesResponse response =
@@ -870,11 +873,11 @@ public class RESTApi {
      * Get tag for table.
      *
      * @param identifier database name and table name.
-     * @param tagName tag name
+     * @param tagName    tag name
      * @return {@link GetTagResponse}
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the tag not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public GetTagResponse getTag(Identifier identifier, String tagName) {
         return client.get(
@@ -887,15 +890,15 @@ public class RESTApi {
     /**
      * Create tag for table.
      *
-     * @param identifier database name and table name.
-     * @param tagName tag name
-     * @param snapshotId optional snapshot id, if not provided uses latest snapshot
+     * @param identifier   database name and table name.
+     * @param tagName      tag name
+     * @param snapshotId   optional snapshot id, if not provided uses latest snapshot
      * @param timeRetained optional time retained as string (e.g., "1d", "12h", "30m")
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table or snapshot not
-     *     exists
-     * @throws AlreadyExistsException Exception thrown on HTTP 409 means the tag already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     *                                 exists
+     * @throws AlreadyExistsException  Exception thrown on HTTP 409 means the tag already exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void createTag(
             Identifier identifier,
@@ -912,17 +915,17 @@ public class RESTApi {
     /**
      * Get paged list names of tags under this table. An empty list is returned if none tag exists.
      *
-     * @param identifier database name and table name.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param identifier    database name and table name.
+     * @param maxResults    Optional parameter indicating the maximum number of results to include in
+     *                      the result. If maxResults is not specified or set to 0, will return the default number of
+     *                      max results.
+     * @param pageToken     Optional parameter indicating the next page token allows list to be start
+     *                      from a specific point.
      * @param tagNamePrefix A prefix for tag names. All tags will be returned if not set or empty.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public PagedList<String> listTagsPaged(
             Identifier identifier,
@@ -948,10 +951,10 @@ public class RESTApi {
      * Delete tag for table.
      *
      * @param identifier database name and table name.
-     * @param tagName tag name
+     * @param tagName    tag name
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the tag not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public void deleteTag(Identifier identifier, String tagName) {
         client.delete(
@@ -982,18 +985,18 @@ public class RESTApi {
      * <p>Gets an array of functions for a database. There is no guarantee of a specific ordering of
      * the elements in the array.
      *
-     * @param databaseName database name
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param databaseName        database name
+     * @param maxResults          Optional parameter indicating the maximum number of results to include in
+     *                            the result. If maxResults is not specified or set to 0, will return the default number of
+     *                            max results.
+     * @param pageToken           Optional parameter indicating the next page token allows list to be start
+     *                            from a specific point.
      * @param functionNamePattern A sql LIKE pattern (%) for function names. All functions will be
-     *     returned if not set or empty. Currently, only prefix matching is supported.
+     *                            returned if not set or empty. Currently, only prefix matching is supported.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public PagedList<String> listFunctionsPaged(
             String databaseName,
@@ -1022,18 +1025,18 @@ public class RESTApi {
      * <p>Gets an array of function details for a database. There is no guarantee of a specific
      * ordering of the elements in the array.
      *
-     * @param databaseName database name
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param databaseName        database name
+     * @param maxResults          Optional parameter indicating the maximum number of results to include in
+     *                            the result. If maxResults is not specified or set to 0, will return the default number of
+     *                            max results.
+     * @param pageToken           Optional parameter indicating the next page token allows list to be start
+     *                            from a specific point.
      * @param functionNamePattern A sql LIKE pattern (%) for function names. All functions will be
-     *     returned if not set or empty. Currently, only prefix matching is supported.
+     *                            returned if not set or empty. Currently, only prefix matching is supported.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public PagedList<GetFunctionResponse> listFunctionDetailsPaged(
             String databaseName,
@@ -1063,17 +1066,17 @@ public class RESTApi {
      * the elements in the array.
      *
      * @param databaseNamePattern A sql LIKE pattern (%) for database names. All databases will be
-     *     returned if not set or empty. Currently, only prefix matching is supported.
+     *                            returned if not set or empty. Currently, only prefix matching is supported.
      * @param functionNamePattern A sql LIKE pattern (%) for function names. All functions will be
-     *     returned if not set or empty. Currently, only prefix matching is supported.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     *                            returned if not set or empty. Currently, only prefix matching is supported.
+     * @param maxResults          Optional parameter indicating the maximum number of results to include in
+     *                            the result. If maxResults is not specified or set to 0, will return the default number of
+     *                            max results.
+     * @param pageToken           Optional parameter indicating the next page token allows list to be start
+     *                            from a specific point.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     *                            this database
      */
     public PagedList<Identifier> listFunctionsPagedGlobally(
             @Nullable String databaseNamePattern,
@@ -1103,7 +1106,7 @@ public class RESTApi {
      * @param identifier the identifier of the function to retrieve
      * @return the function response object
      * @throws NoSuchResourceException if the function does not exist
-     * @throws ForbiddenException if the user lacks permission to access the function
+     * @throws ForbiddenException      if the user lacks permission to access the function
      */
     public GetFunctionResponse getFunction(Identifier identifier) {
         if (!isValidFunctionName(identifier.getObjectName())) {
@@ -1122,10 +1125,10 @@ public class RESTApi {
      * Create a function.
      *
      * @param identifier database name and function name.
-     * @param function the function to be created
+     * @param function   the function to be created
      * @throws AlreadyExistsException Exception thrown on HTTP 409 means a function already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     creating function
+     * @throws ForbiddenException     Exception thrown on HTTP 403 means don't have the permission for
+     *                                creating function
      */
     public void createFunction(
             Identifier identifier, org.apache.paimon.function.Function function) {
@@ -1141,8 +1144,8 @@ public class RESTApi {
      *
      * @param identifier database name and function name.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the function not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this function
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this function
      */
     public void dropFunction(Identifier identifier) {
         checkFunctionName(identifier.getObjectName());
@@ -1155,9 +1158,9 @@ public class RESTApi {
      * Alter a function.
      *
      * @param identifier database name and function name.
-     * @param changes list of function changes to apply
+     * @param changes    list of function changes to apply
      * @throws NoSuchResourceException if the function does not exist
-     * @throws ForbiddenException if the user lacks permission to modify the function
+     * @throws ForbiddenException      if the user lacks permission to modify the function
      */
     public void alterFunction(Identifier identifier, List<FunctionChange> changes) {
         checkFunctionName(identifier.getObjectName());
@@ -1173,8 +1176,8 @@ public class RESTApi {
      * @param identifier database name and view name.
      * @return {@link GetViewResponse}
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the view not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this view
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this view
      */
     public GetViewResponse getView(Identifier identifier) {
         return client.get(
@@ -1188,8 +1191,8 @@ public class RESTApi {
      *
      * @param identifier database name and view name.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the view not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this view
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this view
      */
     public void dropView(Identifier identifier) {
         client.delete(
@@ -1201,10 +1204,10 @@ public class RESTApi {
      * Create view.
      *
      * @param identifier database name and view name.
-     * @param schema schema of the view
+     * @param schema     schema of the view
      * @throws AlreadyExistsException Exception thrown on HTTP 409 means the view already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this view
+     * @throws ForbiddenException     Exception thrown on HTTP 403 means don't have the permission for
+     *                                this view
      */
     public void createView(Identifier identifier, ViewSchema schema) {
         CreateViewRequest request = new CreateViewRequest(identifier, schema);
@@ -1217,8 +1220,8 @@ public class RESTApi {
      * @param databaseName name of this database
      * @return a list of view names
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public List<String> listViews(String databaseName) {
         return listDataFromPageApi(
@@ -1236,18 +1239,18 @@ public class RESTApi {
      * <p>Gets an array of views for a database. There is no guarantee of a specific ordering of the
      * elements in the array.
      *
-     * @param databaseName database name
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param databaseName    database name
+     * @param maxResults      Optional parameter indicating the maximum number of results to include in
+     *                        the result. If maxResults is not specified or set to 0, will return the default number of
+     *                        max results.
+     * @param pageToken       Optional parameter indicating the next page token allows list to be start
+     *                        from a specific point.
      * @param viewNamePattern A sql LIKE pattern (%) for view names. All views will be returned if
-     *     not set or empty. Currently, only prefix matching is supported.
+     *                        not set or empty. Currently, only prefix matching is supported.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public PagedList<String> listViewsPaged(
             String databaseName,
@@ -1274,18 +1277,18 @@ public class RESTApi {
      * <p>Gets an array of view details for a database. There is no guarantee of a specific ordering
      * of the elements in the array.
      *
-     * @param databaseName database name
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     * @param databaseName    database name
+     * @param maxResults      Optional parameter indicating the maximum number of results to include in
+     *                        the result. If maxResults is not specified or set to 0, will return the default number of
+     *                        max results.
+     * @param pageToken       Optional parameter indicating the next page token allows list to be start
+     *                        from a specific point.
      * @param viewNamePattern A sql LIKE pattern (%) for view names. All views will be returned if
-     *     not set or empty. Currently, only prefix matching is supported.
+     *                        not set or empty. Currently, only prefix matching is supported.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the database not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this database
      */
     public PagedList<GetViewResponse> listViewDetailsPaged(
             String databaseName,
@@ -1313,17 +1316,17 @@ public class RESTApi {
      * elements in the array.
      *
      * @param databaseNamePattern A sql LIKE pattern (%) for database names. All databases will be
-     *     returned if not set or empty. Currently, only prefix matching is supported.
-     * @param viewNamePattern A sql LIKE pattern (%) for view names. All views will be returned if
-     *     not set or empty. Currently, only prefix matching is supported.
-     * @param maxResults Optional parameter indicating the maximum number of results to include in
-     *     the result. If maxResults is not specified or set to 0, will return the default number of
-     *     max results.
-     * @param pageToken Optional parameter indicating the next page token allows list to be start
-     *     from a specific point.
+     *                            returned if not set or empty. Currently, only prefix matching is supported.
+     * @param viewNamePattern     A sql LIKE pattern (%) for view names. All views will be returned if
+     *                            not set or empty. Currently, only prefix matching is supported.
+     * @param maxResults          Optional parameter indicating the maximum number of results to include in
+     *                            the result. If maxResults is not specified or set to 0, will return the default number of
+     *                            max results.
+     * @param pageToken           Optional parameter indicating the next page token allows list to be start
+     *                            from a specific point.
      * @return {@link PagedList}: elements and nextPageToken.
      * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this database
+     *                            this database
      */
     public PagedList<Identifier> listViewsPagedGlobally(
             @Nullable String databaseNamePattern,
@@ -1351,11 +1354,11 @@ public class RESTApi {
      * Rename view.
      *
      * @param fromView from view
-     * @param toView to view
+     * @param toView   to view
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means fromView not exists
-     * @throws AlreadyExistsException Exception thrown on HTTP 409 means toView already exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     views
+     * @throws AlreadyExistsException  Exception thrown on HTTP 409 means toView already exists
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 views
      */
     public void renameView(Identifier fromView, Identifier toView) {
         RenameTableRequest request = new RenameTableRequest(fromView, toView);
@@ -1365,11 +1368,11 @@ public class RESTApi {
     /**
      * Alter view.
      *
-     * @param identifier database name and view name.
+     * @param identifier  database name and view name.
      * @param viewChanges view changes
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the view not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this view
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this view
      */
     public void alterView(Identifier identifier, List<ViewChange> viewChanges) {
         AlterViewRequest request = new AlterViewRequest(viewChanges);
@@ -1385,8 +1388,8 @@ public class RESTApi {
      * @param identifier database name and view name.
      * @return {@link GetTableTokenResponse}
      * @throws NoSuchResourceException Exception thrown on HTTP 404 means the table not exists
-     * @throws ForbiddenException Exception thrown on HTTP 403 means don't have the permission for
-     *     this table
+     * @throws ForbiddenException      Exception thrown on HTTP 403 means don't have the permission for
+     *                                 this table
      */
     public GetTableTokenResponse loadTableToken(Identifier identifier) {
         return client.get(
@@ -1395,12 +1398,16 @@ public class RESTApi {
                 restAuthFunction);
     }
 
-    /** Util method to deserialize object from json. */
+    /**
+     * Util method to deserialize object from json.
+     */
     public static <T> T fromJson(String json, Class<T> clazz) throws JsonProcessingException {
         return OBJECT_MAPPER.readValue(json, clazz);
     }
 
-    /** Util method to serialize object to json. */
+    /**
+     * Util method to serialize object to json.
+     */
     public static <T> String toJson(T t) throws JsonProcessingException {
         return OBJECT_MAPPER.writeValueAsString(t);
     }
