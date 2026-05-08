@@ -243,8 +243,8 @@ class SnapshotManagerBranchAwarenessTest(unittest.TestCase):
         self.assertIsNot(branch_sm.snapshot_loader, sm.snapshot_loader)
         self.assertEqual(branch_sm.snapshot_loader.identifier.branch, "b1")
         self.assertEqual(
-            branch_sm.snapshot_loader.identifier.database,
-            sm.snapshot_loader.identifier.database)
+            branch_sm.snapshot_loader.identifier.get_database_name(),
+            sm.snapshot_loader.identifier.get_database_name())
         self.assertEqual(
             branch_sm.snapshot_loader.identifier.get_table_name(),
             sm.snapshot_loader.identifier.get_table_name())
