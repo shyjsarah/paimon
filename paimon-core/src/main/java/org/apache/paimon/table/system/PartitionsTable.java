@@ -95,7 +95,9 @@ public class PartitionsTable implements ReadonlyTable {
                             new DataField(5, "created_at", DataTypes.TIMESTAMP_MILLIS()),
                             new DataField(6, "created_by", DataTypes.STRING()),
                             new DataField(7, "updated_by", DataTypes.STRING()),
-                            new DataField(8, "options", DataTypes.STRING())));
+                            new DataField(8, "options", DataTypes.STRING()),
+                            new DataField(9, "total_buckets", DataTypes.INT().notNull()),
+                            new DataField(10, "done", DataTypes.BOOLEAN().notNull())));
 
     private final FileStoreTable storeTable;
 
@@ -291,7 +293,9 @@ public class PartitionsTable implements ReadonlyTable {
                     createdAtTimestamp,
                     createdByString,
                     updatedByString,
-                    optionsString);
+                    optionsString,
+                    partition.totalBuckets(),
+                    partition.done());
         }
 
         private PartitionEntry toPartitionEntry(Partition partition) {
