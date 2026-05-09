@@ -36,6 +36,8 @@ from pypaimon.read.push_down_utils import (_get_all_fields,
                                            trim_and_transform_predicate)
 from pypaimon.read.scanner.append_table_split_generator import \
     AppendTableSplitGenerator
+from pypaimon.read.scanner.bucket_select_converter import \
+    create_bucket_selector
 from pypaimon.read.scanner.data_evolution_split_generator import \
     DataEvolutionSplitGenerator
 from pypaimon.read.scanner.primary_key_table_split_generator import \
@@ -208,6 +210,12 @@ class FileScanner:
         self._scanned_snapshot = None
         self._scanned_snapshot_id = None
 
+        # Predicate-driven bucket pruning (HASH_FIXED only). Mirrors Java
+        # BucketSelectConverter. Set on demand and reused across all
+        # _filter_manifest_entry calls; the inner _Selector caches the
+        # bucket set per ``total_buckets`` value.
+        self._bucket_selector = self._init_bucket_selector()
+
         def schema_fields_func(schema_id: int):
             return self.table.schema_manager.get_schema(schema_id).fields
 
@@ -340,8 +348,35 @@ class FileScanner:
         return self.manifest_file_manager.read_entries_parallel(
             manifest_files,
             self._filter_manifest_entry,
-            max_workers=max_workers
+            max_workers=max_workers,
+            early_entry_filter=self._build_early_bucket_filter(),
         )
+
+    def _build_early_bucket_filter(self):
+        """Compose the (bucket, total_buckets) -> bool used by the manifest
+        reader to drop entries before deserialising ``_FILE`` / partition.
+
+        Mirrors the BucketFilter applied at Java's InternalRow stage in
+        ``ManifestEntryCache``. The signature is intentionally minimal:
+        per-partition predicate pre-evaluation would also need
+        ``(partition, bucket, total_buckets)``, but the current selector
+        is partition-agnostic.
+        """
+        only_real = self.only_read_real_buckets
+        selector = self._bucket_selector
+        if not only_real and selector is None:
+            return None
+
+        def _filter(bucket: int, total_buckets: int) -> bool:
+            if only_real and bucket < 0:
+                return False
+            if (selector is not None
+                    and bucket >= 0
+                    and not selector(bucket, total_buckets)):
+                return False
+            return True
+
+        return _filter
 
     def with_shard(self, idx_of_this_subtask: int, number_of_para_subtasks: int) -> 'FileScanner':
         if idx_of_this_subtask >= number_of_para_subtasks:
@@ -401,9 +436,55 @@ class FileScanner:
             file.partition_stats,
             file.num_added_files + file.num_deleted_files)
 
+    def _init_bucket_selector(self):
+        """Build the predicate-driven bucket selector if (and only if) the
+        table is in HASH_FIXED mode and the predicate pins all bucket-key
+        fields to Equal/In literals. Anything else returns None — the
+        caller treats None as "no bucket-level pruning".
+
+        Bucket-key fields come from ``TableSchema.logical_bucket_key_fields``
+        — the same source the writer's ``FixedBucketRowKeyExtractor`` reads
+        from, which is what makes the read/write hash agreement a property
+        of the schema rather than of any particular extractor instance.
+
+        Sound across rescale: ``_Selector`` caches per ``total_buckets``,
+        which can vary between manifest entries after a bucket rescale.
+        """
+        if self.predicate is None:
+            return None
+        # ``bucket_mode()`` returns HASH_FIXED only when ``options.bucket()
+        # > 0``; other modes (DYNAMIC / POSTPONE / UNAWARE / CROSS_PARTITION)
+        # have no fixed hash → bucket mapping at write time and must NOT
+        # be pruned here.
+        try:
+            if self.table.bucket_mode() != BucketMode.HASH_FIXED:
+                return None
+        except Exception:
+            # Defensive: any catalog/proxy table that fails the mode check
+            # falls back to no pruning rather than crashing the scan.
+            return None
+        try:
+            bucket_key_fields = self.table.table_schema.logical_bucket_key_fields
+        except Exception:
+            # ``bucket_keys`` raises on misconfigured ``bucket-key`` (e.g.
+            # references an unknown column). The previous extractor-based
+            # path failed open here; preserve that — pruning is an
+            # optimisation, never a correctness requirement.
+            return None
+        if not bucket_key_fields:
+            return None
+        return create_bucket_selector(self.predicate, bucket_key_fields)
+
     def _filter_manifest_entry(self, entry: ManifestEntry) -> bool:
-        if self.only_read_real_buckets and entry.bucket < 0:
-            return False
+        # NOTE: bucket-level filtering (``only_read_real_buckets`` + the
+        # predicate-driven selector) is enforced in the manifest reader's
+        # early filter (see ``_build_early_bucket_filter``) so rejected
+        # entries skip ``_FILE`` / partition decoding entirely. This
+        # method assumes that early filter has already run; a caller that
+        # bypasses ``read_entries_parallel`` and invokes this directly on
+        # raw entries MUST still apply ``_build_early_bucket_filter`` (or
+        # otherwise enforce ``bucket >= 0`` on POSTPONE tables) — this
+        # function alone is not sound on its own.
         if self.partition_key_predicate and not self.partition_key_predicate.test(entry.partition):
             return False
         # Get SimpleStatsEvolution for this schema
