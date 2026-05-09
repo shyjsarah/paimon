@@ -24,6 +24,7 @@ import org.apache.paimon.catalog.CatalogContext;
 import org.apache.paimon.catalog.CatalogFactory;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.data.BinaryRow;
+import org.apache.paimon.data.BinaryString;
 import org.apache.paimon.data.GenericRow;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.disk.IOManager;
@@ -712,6 +713,84 @@ class ClusteringTableTest {
         assertThat(readRows(firstRowTable)).containsExactlyInAnyOrderElementsOf(firstBatch);
     }
 
+    /**
+     * Test first-row mode with composite primary key (STRING, INT) and same values inserted twice.
+     * Reproduces an issue where duplicate detection fails or produces wrong results.
+     */
+    @Test
+    public void testFirstRowCompositePkSameValues() throws Exception {
+        Table firstRowTable = createFirstRowTableCompositePk();
+
+        // Commit 1: initial records
+        writeRows(
+                firstRowTable,
+                Arrays.asList(
+                        GenericRow.of(BinaryString.fromString("hi"), 1, 10),
+                        GenericRow.of(BinaryString.fromString("hi"), 2, 20)));
+
+        // Verify first commit
+        assertThat(readRowsCompositePk(firstRowTable))
+                .containsExactlyInAnyOrder(
+                        GenericRow.of(BinaryString.fromString("hi"), 1, 10),
+                        GenericRow.of(BinaryString.fromString("hi"), 2, 20));
+
+        // Commit 2: same keys with same values again — all should be ignored in first-row mode
+        writeRows(
+                firstRowTable,
+                Arrays.asList(
+                        GenericRow.of(BinaryString.fromString("hi"), 1, 10),
+                        GenericRow.of(BinaryString.fromString("hi"), 2, 20)));
+
+        // Should still see the first values
+        assertThat(readRowsCompositePk(firstRowTable))
+                .containsExactlyInAnyOrder(
+                        GenericRow.of(BinaryString.fromString("hi"), 1, 10),
+                        GenericRow.of(BinaryString.fromString("hi"), 2, 20));
+    }
+
+    /** Test first-row mode keeps original values after bootstrapping composite key index. */
+    @Test
+    public void testFirstRowCompositePkKeepsOriginalValuesAcrossBootstrap() throws Exception {
+        Table firstRowTable = createFirstRowTableCompositePk();
+
+        List<GenericRow> originalRows =
+                Arrays.asList(
+                        GenericRow.of(BinaryString.fromString("same"), 1, 10),
+                        GenericRow.of(BinaryString.fromString("same"), 2, 20),
+                        GenericRow.of(BinaryString.fromString("same"), 3, 30));
+        writeRows(firstRowTable, originalRows);
+
+        writeRows(
+                firstRowTable,
+                Arrays.asList(
+                        GenericRow.of(BinaryString.fromString("same"), 1, 100),
+                        GenericRow.of(BinaryString.fromString("same"), 2, 200),
+                        GenericRow.of(BinaryString.fromString("same"), 3, 300)));
+
+        assertThat(readRowsCompositePk(firstRowTable))
+                .containsExactlyInAnyOrderElementsOf(originalRows);
+        assertThat(dataFiles(firstRowTable).stream().mapToLong(DataFileMeta::rowCount).sum())
+                .isEqualTo(originalRows.size());
+    }
+
+    /** Test sort-and-rewrite writes clustering ranges in ascending order. */
+    @Test
+    public void testFirstRowSortAndRewriteFileKeepsAscendingClusteringRange() throws Exception {
+        Table firstRowTable = createFirstRowTableWithCompositeClusteringColumns();
+
+        writeRows(
+                firstRowTable,
+                Arrays.asList(
+                        GenericRow.of(1, BinaryString.fromString("same"), 2),
+                        GenericRow.of(2, BinaryString.fromString("same"), 1)));
+
+        List<DataFileMeta> dataFiles = dataFiles(firstRowTable);
+        assertThat(dataFiles).hasSize(1);
+        DataFileMeta dataFile = dataFiles.get(0);
+        assertThat(dataFile.minKey().getInt(1)).isEqualTo(1);
+        assertThat(dataFile.maxKey().getInt(1)).isEqualTo(2);
+    }
+
     // ==================== Spill Tests ====================
 
     /** Test first-row mode with spill: keeps first values despite many duplicate commits. */
@@ -1044,6 +1123,59 @@ class ClusteringTableTest {
         return catalog.getTable(identifier);
     }
 
+    private Table createFirstRowTableCompositePk() throws Exception {
+        Identifier identifier = Identifier.create("default", "first_row_composite_pk_table");
+        Schema schema =
+                Schema.newBuilder()
+                        .column("k1", DataTypes.STRING())
+                        .column("k2", DataTypes.INT())
+                        .column("v", DataTypes.INT())
+                        .primaryKey("k1", "k2")
+                        .option(DELETION_VECTORS_ENABLED.key(), "true")
+                        .option(BUCKET.key(), "1")
+                        .option(CLUSTERING_COLUMNS.key(), "v")
+                        .option(PK_CLUSTERING_OVERRIDE.key(), "true")
+                        .option(MERGE_ENGINE.key(), "first-row")
+                        .build();
+        catalog.createTable(identifier, schema, false);
+        return catalog.getTable(identifier);
+    }
+
+    private Table createFirstRowTableWithCompositeClusteringColumns() throws Exception {
+        Identifier identifier =
+                Identifier.create("default", "first_row_composite_clustering_table");
+        Schema schema =
+                Schema.newBuilder()
+                        .column("a", DataTypes.INT())
+                        .column("c", DataTypes.STRING())
+                        .column("b", DataTypes.INT())
+                        .primaryKey("a")
+                        .option(DELETION_VECTORS_ENABLED.key(), "true")
+                        .option(BUCKET.key(), "1")
+                        .option(CLUSTERING_COLUMNS.key(), "c,b")
+                        .option(PK_CLUSTERING_OVERRIDE.key(), "true")
+                        .option(MERGE_ENGINE.key(), "first-row")
+                        .build();
+        catalog.createTable(identifier, schema, false);
+        return catalog.getTable(identifier);
+    }
+
+    private List<GenericRow> readRowsCompositePk(Table targetTable) throws Exception {
+        ReadBuilder readBuilder = targetTable.newReadBuilder();
+        @SuppressWarnings("resource")
+        CloseableIterator<InternalRow> iterator =
+                readBuilder
+                        .newRead()
+                        .createReader(readBuilder.newScan().plan())
+                        .toCloseableIterator();
+        List<GenericRow> result = new ArrayList<>();
+        while (iterator.hasNext()) {
+            InternalRow row = iterator.next();
+            result.add(GenericRow.of(row.getString(0), row.getInt(1), row.getInt(2)));
+        }
+        return result;
+    }
+
     private void writeRows(List<GenericRow> rows) throws Exception {
         writeRows(table, rows);
     }
@@ -1075,6 +1207,14 @@ class ClusteringTableTest {
         while (iterator.hasNext()) {
             InternalRow row = iterator.next();
             result.add(GenericRow.of(row.getInt(0), row.getInt(1)));
+        }
+        return result;
+    }
+
+    private List<DataFileMeta> dataFiles(Table targetTable) {
+        List<DataFileMeta> result = new ArrayList<>();
+        for (Split split : targetTable.newReadBuilder().newScan().plan().splits()) {
+            result.addAll(((DataSplit) split).dataFiles());
         }
         return result;
     }
