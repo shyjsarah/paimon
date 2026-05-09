@@ -463,6 +463,12 @@ class FileScanner:
             # Defensive: any catalog/proxy table that fails the mode check
             # falls back to no pruning rather than crashing the scan.
             return None
+        # Only the default hash function (Math.abs(hash % numBuckets)) is
+        # supported for bucket pruning. Non-default functions (mod, hive)
+        # use different algorithms and would produce wrong bucket sets.
+        bucket_func = self.table.table_schema.options.get('bucket-function.type', 'default')
+        if bucket_func.lower() != 'default':
+            return None
         try:
             bucket_key_fields = self.table.table_schema.logical_bucket_key_fields
         except Exception:
@@ -476,15 +482,15 @@ class FileScanner:
         return create_bucket_selector(self.predicate, bucket_key_fields)
 
     def _filter_manifest_entry(self, entry: ManifestEntry) -> bool:
-        # NOTE: bucket-level filtering (``only_read_real_buckets`` + the
-        # predicate-driven selector) is enforced in the manifest reader's
-        # early filter (see ``_build_early_bucket_filter``) so rejected
-        # entries skip ``_FILE`` / partition decoding entirely. This
-        # method assumes that early filter has already run; a caller that
-        # bypasses ``read_entries_parallel`` and invokes this directly on
-        # raw entries MUST still apply ``_build_early_bucket_filter`` (or
-        # otherwise enforce ``bucket >= 0`` on POSTPONE tables) — this
-        # function alone is not sound on its own.
+        # Redundant safety net: the early filter in the manifest reader
+        # already enforces these, but guard here too so this method is
+        # self-contained if called outside read_entries_parallel.
+        if self.only_read_real_buckets and entry.bucket < 0:
+            return False
+        if (self._bucket_selector is not None
+                and entry.bucket >= 0
+                and not self._bucket_selector(entry.bucket, entry.total_buckets)):
+            return False
         if self.partition_key_predicate and not self.partition_key_predicate.test(entry.partition):
             return False
         # Get SimpleStatsEvolution for this schema
