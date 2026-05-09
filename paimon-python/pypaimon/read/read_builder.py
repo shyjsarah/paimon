@@ -24,7 +24,7 @@ from pypaimon.read.table_read import TableRead
 from pypaimon.read.table_scan import TableScan
 from pypaimon.schema.data_types import DataField
 from pypaimon.table.special_fields import SpecialFields
-from pypaimon.utils.projection import Projection, _is_row_type
+from pypaimon.utils.projection import Projection, is_row_type
 
 
 class ReadBuilder:
@@ -35,12 +35,10 @@ class ReadBuilder:
 
         self.table: FileStoreTable = table
         self._predicate: Optional[Predicate] = None
-        # ``_projection`` is the user-facing list of names from
-        # :meth:`with_projection`. ``_nested_paths`` is the canonical
-        # integer-path form (length-1 for top level, longer for nested
-        # ROW children) used by every consumer in this module.
-        # ``with_nested_projection`` populates only the latter; the two
-        # never both hold meaningful state simultaneously.
+        # ``_projection`` stores the user-facing name list from
+        # :meth:`with_projection`. When dotted names are present,
+        # ``_nested_paths`` is also populated and takes precedence
+        # in ``read_type()`` and downstream consumers.
         self._projection: Optional[List[str]] = None
         self._nested_paths: Optional[List[List[int]]] = None
         self._limit: Optional[int] = None
@@ -145,7 +143,7 @@ class ReadBuilder:
             current_field = table_fields[path[0]]
             ok = True
             for part in parts[1:]:
-                if not _is_row_type(current_field.type):
+                if not is_row_type(current_field.type):
                     ok = False
                     break
                 child_fields = current_field.type.fields

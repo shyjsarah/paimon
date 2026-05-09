@@ -49,9 +49,6 @@ class TableRead:
         self.predicate = predicate
         self.read_type = read_type
         self.include_row_kind = include_row_kind
-        # Parallel to ``read_type``; each entry is the original-schema
-        # name path for the field. ``None`` when no projection (or only
-        # top-level projection) is set.
         self.nested_name_paths = nested_name_paths
 
     def to_iterator(self, splits: List[Split]) -> Iterator:
@@ -275,10 +272,6 @@ class TableRead:
         if self.table.is_primary_key_table and not split.raw_convertible:
             if self.nested_name_paths and any(
                     len(p) > 1 for p in self.nested_name_paths):
-                # The merge function needs full parent structs; outer
-                # projection that walks the path to recover leaves is a
-                # separate change. Project the parent struct and extract
-                # client-side until then.
                 raise NotImplementedError(
                     "Nested-field projection on primary-key tables that "
                     "require a merge read is not yet supported")
@@ -292,11 +285,6 @@ class TableRead:
         elif self.table.options.data_evolution_enabled():
             if self.nested_name_paths and any(
                     len(p) > 1 for p in self.nested_name_paths):
-                # Multi-file union for data-evolution tables matches files
-                # by top-level field ID; a nested ``read_field`` carries
-                # its leaf ID, which never matches and would silently
-                # produce all-NULL columns. Refuse loudly until the
-                # union path is taught to walk paths.
                 raise NotImplementedError(
                     "Nested-field projection on data-evolution tables is "
                     "not yet supported")

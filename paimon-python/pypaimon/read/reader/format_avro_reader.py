@@ -48,11 +48,6 @@ class FormatAvroReader(RecordBatchReader):
         projected_data_fields = [full_fields_map[name] for name in read_fields]
         self._schema = PyarrowFieldParser.from_paimon_schema(projected_data_fields)
 
-        # ``nested_name_paths`` is parallel to ``read_fields``. Top-level
-        # entries are length-1 paths and use the existing ``record.get``
-        # fast path; longer paths walk the record dict step-by-step. The
-        # path's first segment must be a real top-level Avro field —
-        # ``_get_fields_and_predicate`` upstream guarantees this.
         if nested_name_paths is not None and len(nested_name_paths) != len(read_fields):
             raise ValueError(
                 "nested_name_paths length {} does not match read_fields length {}".format(
@@ -97,10 +92,8 @@ class FormatAvroReader(RecordBatchReader):
 
 
 def _walk_avro_record(record, path: List[str]):
-    """Walk a list of field names through an avro record dict, returning
-    the leaf value or ``None`` if any segment is missing or hits a
-    non-dict value. ``record`` is the top-level fastavro dict; nested
-    record fields surface as nested dicts.
+    """Walk field names through a nested avro record dict, returning the
+    leaf value or ``None`` if any segment is missing.
     """
     current = record
     for name in path:

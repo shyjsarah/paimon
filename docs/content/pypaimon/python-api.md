@@ -322,6 +322,24 @@ You can also pushdown projection by `ReadBuilder`:
 read_builder = read_builder.with_projection(['f3', 'f2'])
 ```
 
+For tables with nested struct columns, you can project individual sub-fields using dotted names:
+
+```python
+# Given a table with schema: id BIGINT, info ROW<name STRING, age INT>, val STRING
+
+# Select a nested sub-field and a top-level field
+read_builder = read_builder.with_projection(['info.name', 'val'])
+
+# The result columns are flattened with underscore-joined names:
+# info_name, val
+```
+
+This pushes the nested column pruning down to the file reader (Parquet/ORC use PyArrow's native nested projection; Avro falls back to Python-side extraction). Only the requested leaves are read from disk.
+
+Limitations:
+- Nested projection is only supported on append-only tables. Primary-key tables that require a merge read will raise `NotImplementedError`.
+- `ARRAY<ROW>` and `MAP` nested paths are not yet supported.
+
 ### Generate Splits
 
 Then you can step into Scan Plan stage to get `splits`:

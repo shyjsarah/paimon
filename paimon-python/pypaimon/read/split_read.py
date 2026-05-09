@@ -99,14 +99,13 @@ class SplitRead(ABC):
         self.split = split
         self.row_tracking_enabled = row_tracking_enabled
         self.value_arity = len(read_type)
-        # Parallel to ``read_type``; each entry is the original-schema
-        # name path. ``None`` when no projection or top-level only.
         self.nested_name_paths = nested_name_paths
 
         self.trimmed_primary_key = self.table.trimmed_primary_keys
         self.read_fields = read_type
         if isinstance(self, MergeFileSplitRead):
             self.read_fields = self._create_key_value_fields(read_type)
+        self._cached_nested_path_by_name = self._compute_nested_path_by_name()
         self.schema_id_2_fields = {}
         self.deletion_file_readers = {}
         # Apply filter only when all predicate columns are read by this scan,
@@ -131,11 +130,7 @@ class SplitRead(ABC):
         else:
             self.predicate_for_reader = None
 
-    def _nested_path_by_name(self) -> Optional[Dict[str, List[str]]]:
-        """``{flat_name: original_path}`` for the rows of ``read_type``
-        that go through a nested path (``len > 1``). ``None`` when no
-        such path exists, so callers stay on the top-level fast path.
-        """
+    def _compute_nested_path_by_name(self) -> Optional[Dict[str, List[str]]]:
         if not self.nested_name_paths:
             return None
         if not any(len(p) > 1 for p in self.nested_name_paths):
@@ -145,6 +140,9 @@ class SplitRead(ABC):
                            self.nested_name_paths):
             out[f.name] = path
         return out
+
+    def _nested_path_by_name(self) -> Optional[Dict[str, List[str]]]:
+        return self._cached_nested_path_by_name
 
     def _push_down_predicate(self) -> Optional[Predicate]:
         if self.predicate is None:
@@ -187,11 +185,7 @@ class SplitRead(ABC):
                     end = r.to - file.first_row_id
                     row_indices.extend(range(start, end + 1))
 
-        # Map the parallel ``self.nested_name_paths`` (aligned with
-        # ``self.read_fields``) into the same order the format reader
-        # will see, indexed by output column name. Set to ``None`` when
-        # no path has length > 1 so the reader stays on its top-level
-        # fast path.
+        # Map nested paths into the order the format reader will see.
         nested_path_by_name = self._nested_path_by_name()
         has_nested = nested_path_by_name is not None
 
@@ -214,8 +208,6 @@ class SplitRead(ABC):
                                              batch_size=batch_size)
         elif file_format == CoreOptions.FILE_FORMAT_LANCE:
             if has_nested:
-                # Lance has no nested column pruning today; project the
-                # parent struct in full and extract sub-fields client-side.
                 raise NotImplementedError(
                     "Nested-field projection is not supported on Lance files")
             name_to_field = {f.name: f for f in self.read_fields}
@@ -299,12 +291,9 @@ class SplitRead(ABC):
         return reader
 
     def _get_fields_and_predicate(self, schema_id: int, read_fields):
-        # In nested mode the flat name (``mv_latest_version``) never
-        # appears in the file schema; reachability is decided by the
-        # path's top-level entry instead.
-        nested_path_by_name = self._nested_path_by_name()
         key = (schema_id, tuple(read_fields))
         if key not in self.schema_id_2_fields:
+            nested_path_by_name = self._nested_path_by_name()
             schema = self.table.schema_manager.get_schema(schema_id)
             schema_fields = (
                 SpecialFields.row_type_with_row_tracking(schema.fields)
@@ -366,8 +355,6 @@ class SplitRead(ABC):
 
     def create_index_mapping(self):
         if self._nested_path_by_name() is not None:
-            # Format reader already emits flat columns aligned with
-            # ``read_fields``; the id-based remap can't see leaf IDs.
             return None
         base_index_mapping = self._create_base_index_mapping(self.read_fields, self._get_read_data_fields())
         trimmed_key_mapping, _ = self._get_trimmed_fields(self._get_read_data_fields(), self._get_all_data_fields())
@@ -411,8 +398,6 @@ class SplitRead(ABC):
 
     def _get_final_read_data_fields(self) -> List[str]:
         if self._nested_path_by_name() is not None:
-            # Trimmed-fields filters by ID and drops nested leaves;
-            # hand the format reader the user-facing flat names directly.
             return self._remove_partition_fields(list(self.read_fields))
         _, trimmed_fields = self._get_trimmed_fields(
             self._get_read_data_fields(), self._get_all_data_fields()
@@ -469,11 +454,6 @@ class SplitRead(ABC):
 
     def _construct_partition_mapping(self) -> List[int]:
         if self._nested_path_by_name() is not None:
-            # Nested fields carry leaf IDs that don't match top-level
-            # data-field IDs, so the trimmed-fields machinery can't see
-            # them. Build the mapping directly from ``self.read_fields``:
-            # entries whose flat name equals a partition key get a
-            # negative index, the rest get a sequential read index.
             partition_names = self.table.partition_keys
             mapping = [0] * (len(self.read_fields) + 1)
             p_count = 0

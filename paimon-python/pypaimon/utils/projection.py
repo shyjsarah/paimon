@@ -26,7 +26,7 @@ columns the user wants to read. Two flavours:
   ``[[1, 0], [1, 2]]`` means "the 0th and 2nd children of the field at top
   level index 1". The result is flattened into top-level fields whose
   names are the underscore-joined original path (``a_b`` for ``a.b``,
-  with a ``_$N`` suffix on collisions) and whose IDs are inherited from
+  with a ``__N`` suffix on collisions) and whose IDs are inherited from
   the leaf so schema-evolution remapping by field ID still works.
 """
 
@@ -195,7 +195,7 @@ class NestedProjection(Projection):
             names = [field.name]
             for idx in path[1:]:
                 child_type = field.type
-                if not _is_row_type(child_type):
+                if not is_row_type(child_type):
                     raise ValueError(
                         "Nested projection step expected a ROW type but got %s "
                         "for field '%s'" % (child_type, field.name))
@@ -206,11 +206,6 @@ class NestedProjection(Projection):
         return result
 
     def project(self, row_type) -> List[DataField]:
-        # ``dup_count`` is monotonic across the whole call: it increments
-        # whenever a name has to be suffixed, regardless of which base
-        # name caused the collision. The per-call counter only guarantees
-        # uniqueness, not that ``_$0`` always represents the first
-        # collision of any given base.
         fields = _row_fields(row_type)
         out: List[DataField] = []
         seen_names = set()
@@ -220,7 +215,7 @@ class NestedProjection(Projection):
             name_parts = [field.name]
             for idx in path[1:]:
                 child_type = field.type
-                if not _is_row_type(child_type):
+                if not is_row_type(child_type):
                     raise ValueError(
                         "Nested projection step expected a ROW type but got %s "
                         "for field '%s'" % (child_type, field.name))
@@ -230,7 +225,7 @@ class NestedProjection(Projection):
             base_name = "_".join(name_parts)
             final_name = base_name
             while final_name in seen_names:
-                final_name = "%s_$%d" % (base_name, dup_count)
+                final_name = "%s__%d" % (base_name, dup_count)
                 dup_count += 1
             seen_names.add(final_name)
             # Keep the leaf field's ID so downstream schema-evolution
@@ -259,9 +254,7 @@ def _row_fields(row_type) -> List[DataField]:
     return list(fields)
 
 
-def _is_row_type(data_type) -> bool:
+def is_row_type(data_type) -> bool:
     if isinstance(data_type, RowType):
         return True
-    # Lightweight test stubs may report ``.fields`` without subclassing
-    # RowType — accept those too.
     return getattr(data_type, 'fields', None) is not None

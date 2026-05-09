@@ -130,7 +130,7 @@ class NestedProjectionTest(unittest.TestCase):
         res = Projection.of([[0, 0], [1, 0]]).project(fields)
         self.assertEqual([f.name for f in res], ['a_x', 'b_x'])
 
-        # When two collapse to the SAME name, the second gets `_$N`.
+        # When two collapse to the SAME name, the second gets `__N`.
         # Build two parents whose leaves have the same compound name.
         sub_x_only = _atomic(30, 'x')
         fields2 = [
@@ -141,7 +141,7 @@ class NestedProjectionTest(unittest.TestCase):
         # First path produces 'a_x'; second is already-existing 'a_x'.
         # Collision → suffix on the second.
         self.assertEqual(res2[0].name, 'a_x')
-        self.assertTrue(res2[1].name.startswith('a_x_$'))
+        self.assertTrue(res2[1].name.startswith('a_x__'))
 
     def test_project_rejects_non_row_step(self):
         # Trying to walk into an atomic field must fail loudly.
@@ -158,7 +158,7 @@ class NestedProjectionTest(unittest.TestCase):
             NestedProjection([[]])
 
     def test_dup_count_is_monotonic_across_distinct_collisions(self):
-        # ``_$N`` is a per-call monotonic counter — distinct collisions
+        # ``__N`` is a per-call monotonic counter — distinct collisions
         # share the suffix space, they don't each restart at 0.
         sub_x_1 = _atomic(20, 'x')
         sub_x_2 = _atomic(21, 'x')
@@ -171,12 +171,12 @@ class NestedProjectionTest(unittest.TestCase):
             _struct(4, 'a', [sub_y_1]),  # collides via path [3, 0] → a_y
             _struct(5, 'a', [sub_x_2, sub_y_2]),  # second a.x collision
         ]
-        # Order: a_x (top) → keeps; [1, 0] flatten → a_x (collision) → a_x_$0
-        # a_y (top) → keeps; [3, 0] flatten → a_y (collision) → a_y_$1
+        # Order: a_x (top) → keeps; [1, 0] flatten → a_x (collision) → a_x__0
+        # a_y (top) → keeps; [3, 0] flatten → a_y (collision) → a_y__1
         res = Projection.of(
             [[0], [1, 0], [2], [3, 0]]).project(fields)
         self.assertEqual(
-            [f.name for f in res], ['a_x', 'a_x_$0', 'a_y', 'a_y_$1'])
+            [f.name for f in res], ['a_x', 'a_x__0', 'a_y', 'a_y__1'])
 
     def test_of_rejects_mixed_int_and_path(self):
         # Mixing top-level indexes and nested paths is a programming error;
