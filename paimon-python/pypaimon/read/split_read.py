@@ -189,15 +189,29 @@ class SplitRead(ABC):
         nested_path_by_name = self._nested_path_by_name()
         has_nested = nested_path_by_name is not None
 
+        # Cover both the merge-internal aliases (``_KEY_id``) and the
+        # bare user-facing PK name (``id``) the file actually stores.
+        name_to_field: Dict[str, DataField] = {f.name: f for f in self.read_fields}
+        _, _trimmed_lookup_fields = self._get_trimmed_fields(
+            self._get_read_data_fields(), self._get_all_data_fields()
+        )
+        for f in _trimmed_lookup_fields:
+            name_to_field.setdefault(f.name, f)
+
         format_reader: RecordBatchReader
         if file_format == CoreOptions.FILE_FORMAT_AVRO:
             avro_nested_paths = (
                 [nested_path_by_name[name] for name in read_file_fields]
                 if has_nested else None
             )
-            format_reader = FormatAvroReader(self.table.file_io, file_path, read_file_fields,
-                                             self.read_fields, read_arrow_predicate, batch_size=batch_size,
-                                             nested_name_paths=avro_nested_paths)
+            # Pass the alias-safe union so FormatAvroReader can resolve
+            # the bare PK name (e.g. ``id``) requested by read_file_fields,
+            # even when value projection drops it from self.read_fields.
+            format_reader = FormatAvroReader(
+                self.table.file_io, file_path, read_file_fields,
+                list(name_to_field.values()),
+                read_arrow_predicate, batch_size=batch_size,
+                nested_name_paths=avro_nested_paths)
         elif file_format == CoreOptions.FILE_FORMAT_BLOB:
             if has_nested:
                 raise NotImplementedError(
@@ -210,7 +224,6 @@ class SplitRead(ABC):
             if has_nested:
                 raise NotImplementedError(
                     "Nested-field projection is not supported on Lance files")
-            name_to_field = {f.name: f for f in self.read_fields}
             ordered_read_fields = [name_to_field[n] for n in read_file_fields if n in name_to_field]
             format_reader = FormatLanceReader(self.table.file_io, file_path, ordered_read_fields,
                                               read_arrow_predicate, batch_size=batch_size,
@@ -219,7 +232,6 @@ class SplitRead(ABC):
             if has_nested:
                 raise NotImplementedError(
                     "Nested-field projection is not supported on Vortex files")
-            name_to_field = {f.name: f for f in self.read_fields}
             ordered_read_fields = [name_to_field[n] for n in read_file_fields if n in name_to_field]
             predicate_fields = _get_all_fields(self.push_down_predicate) if self.push_down_predicate else set()
             format_reader = FormatVortexReader(self.table.file_io, file_path, ordered_read_fields,
@@ -227,7 +239,6 @@ class SplitRead(ABC):
                                                row_indices=row_indices,
                                                predicate_fields=predicate_fields)
         elif file_format == CoreOptions.FILE_FORMAT_PARQUET or file_format == CoreOptions.FILE_FORMAT_ORC:
-            name_to_field = {f.name: f for f in self.read_fields}
             ordered_read_fields = [name_to_field[n] for n in read_file_fields if n in name_to_field]
             ordered_nested_paths = (
                 [nested_path_by_name[f.name] for f in ordered_read_fields]
@@ -560,6 +571,27 @@ class RawFileSplitRead(SplitRead):
 
 
 class MergeFileSplitRead(SplitRead):
+    def __init__(
+            self,
+            table,
+            predicate: Optional[Predicate],
+            read_type: List[DataField],
+            split: Split,
+            row_tracking_enabled: bool,
+            outer_extract_name_paths: Optional[List[List[str]]] = None):
+        # Merge functions need full ROW sub-structures, so nested paths
+        # are not pushed down here; sub-path extraction happens above
+        # the merge via OuterProjectionRecordReader.
+        super().__init__(
+            table=table,
+            predicate=predicate,
+            read_type=read_type,
+            split=split,
+            row_tracking_enabled=row_tracking_enabled,
+            nested_name_paths=None,
+        )
+        self.outer_extract_name_paths = outer_extract_name_paths
+
     def kv_reader_supplier(self, file: DataFileMeta, dv_factory: Optional[Callable] = None) -> RecordReader:
         file_batch_reader = self.file_reader_supplier(file, True, self._get_final_read_data_fields(), False)
         dv = dv_factory() if dv_factory else None
@@ -591,9 +623,16 @@ class MergeFileSplitRead(SplitRead):
         concat_reader = ConcatRecordReader(section_readers)
         kv_unwrap_reader = KeyValueUnwrapRecordReader(DropDeleteRecordReader(concat_reader))
         if self.predicate_for_reader:
-            return FilterRecordReader(kv_unwrap_reader, self.predicate_for_reader)
+            reader = FilterRecordReader(kv_unwrap_reader, self.predicate_for_reader)
         else:
-            return kv_unwrap_reader
+            reader = kv_unwrap_reader
+        if self.outer_extract_name_paths:
+            from pypaimon.read.reader.outer_projection_record_reader import \
+                OuterProjectionRecordReader
+            inner_top_names = [f.name for f in self.read_fields[-self.value_arity:]]
+            reader = OuterProjectionRecordReader(
+                reader, inner_top_names, self.outer_extract_name_paths)
+        return reader
 
     def _get_all_data_fields(self):
         return self._create_key_value_fields(self.table.fields)
