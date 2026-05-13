@@ -165,11 +165,10 @@ public class SchemaValidation {
         FileFormat fileFormat =
                 FileFormat.fromIdentifier(options.formatType(), new Options(schema.options()));
         RowType tableRowType = new RowType(schema.fields());
-        Set<String> blobFields = validateBlobFields(tableRowType, options);
-        Set<String> blobDescriptorFields =
-                validateBlobDescriptorFields(tableRowType, options, blobFields);
+        validateBlobFields(tableRowType, options);
+        Set<String> blobDescriptorFields = validateBlobDescriptorFields(tableRowType, options);
         Set<String> blobViewFields =
-                validateBlobViewFields(tableRowType, options, blobFields, blobDescriptorFields);
+                validateBlobViewFields(tableRowType, options, blobDescriptorFields);
         Set<String> blobInlineFields = new HashSet<>(blobDescriptorFields);
         blobInlineFields.addAll(blobViewFields);
         validateBlobExternalStorageFields(tableRowType, options, blobDescriptorFields);
@@ -719,7 +718,7 @@ public class SchemaValidation {
         }
     }
 
-    private static Set<String> validateBlobFields(RowType rowType, CoreOptions options) {
+    private static void validateBlobFields(RowType rowType, CoreOptions options) {
         Set<String> blobFieldNames =
                 rowType.getFields().stream()
                         .filter(field -> field.type().getTypeRoot() == DataTypeRoot.BLOB)
@@ -735,11 +734,9 @@ public class SchemaValidation {
                     field,
                     CoreOptions.BLOB_FIELD.key());
         }
-        return configured;
     }
 
-    private static Set<String> validateBlobDescriptorFields(
-            RowType rowType, CoreOptions options, Set<String> blobFields) {
+    private static Set<String> validateBlobDescriptorFields(RowType rowType, CoreOptions options) {
         Set<String> blobFieldNames =
                 rowType.getFields().stream()
                         .filter(field -> field.type().getTypeRoot() == DataTypeRoot.BLOB)
@@ -752,21 +749,12 @@ public class SchemaValidation {
                     "Field '%s' in '%s' must be a BLOB field in table schema.",
                     field,
                     CoreOptions.BLOB_DESCRIPTOR_FIELD.key());
-            checkArgument(
-                    blobFields.contains(field),
-                    "Field '%s' in '%s' must also be in '%s'.",
-                    field,
-                    CoreOptions.BLOB_DESCRIPTOR_FIELD.key(),
-                    CoreOptions.BLOB_FIELD.key());
         }
         return configured;
     }
 
     private static Set<String> validateBlobViewFields(
-            RowType rowType,
-            CoreOptions options,
-            Set<String> blobFields,
-            Set<String> blobDescriptorFields) {
+            RowType rowType, CoreOptions options, Set<String> blobDescriptorFields) {
         Set<String> blobFieldNames =
                 rowType.getFields().stream()
                         .filter(field -> field.type().getTypeRoot() == DataTypeRoot.BLOB)
@@ -779,12 +767,6 @@ public class SchemaValidation {
                     "Field '%s' in '%s' must be a BLOB field in table schema.",
                     field,
                     CoreOptions.BLOB_VIEW_FIELD.key());
-            checkArgument(
-                    blobFields.contains(field),
-                    "Field '%s' in '%s' must also be in '%s'.",
-                    field,
-                    CoreOptions.BLOB_VIEW_FIELD.key(),
-                    CoreOptions.BLOB_FIELD.key());
             checkArgument(
                     !blobDescriptorFields.contains(field),
                     "Field '%s' in '%s' can not also be in '%s'.",
