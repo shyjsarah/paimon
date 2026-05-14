@@ -19,6 +19,7 @@ from typing import List, Optional, Union
 
 from pypaimon.api.api_response import GetTagResponse, PagedList
 from pypaimon.catalog.catalog import Catalog
+from pypaimon.catalog.catalog_context import CatalogContext
 from pypaimon.catalog.catalog_environment import CatalogEnvironment
 from pypaimon.catalog.catalog_exception import (
     BranchAlreadyExistException,
@@ -36,6 +37,7 @@ from pypaimon.common.options.config import CatalogOptions
 from pypaimon.common.options.core_options import CoreOptions
 from pypaimon.common.file_io import FileIO
 from pypaimon.common.identifier import Identifier
+from pypaimon.filesystem.caching_file_io import CachingFileIO
 from pypaimon.schema.schema_change import SchemaChange
 from pypaimon.schema.schema_manager import SchemaManager
 from pypaimon.snapshot.snapshot import Snapshot
@@ -50,7 +52,11 @@ class FileSystemCatalog(Catalog):
             raise ValueError(f"Paimon '{CatalogOptions.WAREHOUSE.key()}' path must be set")
         self.warehouse = catalog_options.get(CatalogOptions.WAREHOUSE)
         self.catalog_options = catalog_options
-        self.file_io = FileIO.get(self.warehouse, self.catalog_options)
+        self.catalog_context = CatalogContext.create_from_options(catalog_options)
+        self._cache_manager = CachingFileIO.create_cache_manager(self.catalog_options)
+        self.file_io = CachingFileIO.wrap_with_caching_if_needed(
+            FileIO.get(self.warehouse, self.catalog_options), self.catalog_options,
+            self._cache_manager)
 
     def list_databases(self) -> list:
         statuses = self.file_io.list_status(self.warehouse)

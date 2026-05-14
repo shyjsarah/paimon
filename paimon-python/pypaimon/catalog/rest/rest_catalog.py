@@ -41,6 +41,7 @@ from pypaimon.catalog.rest.table_metadata import TableMetadata
 from pypaimon.common.options.config import CatalogOptions, FuseOptions
 from pypaimon.common.options.core_options import CoreOptions
 from pypaimon.common.file_io import FileIO
+from pypaimon.filesystem.caching_file_io import CachingFileIO
 from pypaimon.common.identifier import Identifier
 from pypaimon.schema.schema import Schema
 from pypaimon.schema.schema_change import SchemaChange
@@ -66,6 +67,7 @@ class RESTCatalog(Catalog):
         self.context = CatalogContext.create(self.rest_api.options, context.hadoop_conf,
                                              context.prefer_io_loader, context.fallback_io_loader)
         self.data_token_enabled = self.rest_api.options.get(CatalogOptions.DATA_TOKEN_ENABLED)
+        self._cache_manager = CachingFileIO.create_cache_manager(self.context.options)
 
         # FUSE support (lazy import only when enabled)
         self.fuse_enabled = self.context.options.get(FuseOptions.FUSE_ENABLED, False)
@@ -614,7 +616,9 @@ class RESTCatalog(Catalog):
         )
 
     def file_io_from_options(self, table_path: str) -> FileIO:
-        return FileIO.get(table_path, self.context.options)
+        return CachingFileIO.wrap_with_caching_if_needed(
+            FileIO.get(table_path, self.context.options), self.context.options,
+            self._cache_manager)
 
     def file_io_for_data(self, table_path: str, identifier: Identifier):
         """
